@@ -1,0 +1,265 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Users Table
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String    @map("password_hash")
+  name          String
+  role          String    @default("viewer") // admin, analyst, viewer
+  emailVerified Boolean   @default(false) @map("email_verified")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  lastLogin     DateTime? @map("last_login")
+
+  alertConfigurations AlertConfiguration[]
+  notifications      Notification[]
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+// River Monitoring Stations
+model Station {
+  id          String   @id @default(uuid())
+  name        String
+  riverName   String   @map("river_name")
+  location    Json     // { lat: number, lng: number }
+  address     String?
+  dangerLevel Decimal  @map("danger_level") @db.Decimal(10, 2)
+  floodLevel  Decimal  @map("flood_level") @db.Decimal(10, 2)
+  elevation   Decimal? @db.Decimal(10, 2)
+  basin       String?
+  region      String?
+  state       String?
+  country     String   @default("India")
+  externalId  String?  @map("external_id")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  riverLevels RiverLevel[]
+
+  @@index([riverName])
+  @@index([region])
+  @@index([isActive])
+  @@map("stations")
+}
+
+// Dams/Reservoirs
+model Dam {
+  id           String   @id @default(uuid())
+  name         String
+  location     Json     // { lat: number, lng: number }
+  address      String?
+  totalCapacity Decimal @map("total_capacity") @db.Decimal(12, 2)
+  type         String?
+  height       Decimal? @db.Decimal(10, 2)
+  length       Decimal? @db.Decimal(10, 2)
+  powerCapacity Decimal? @map("power_capacity") @db.Decimal(10, 2)
+  region       String?
+  state        String?
+  country      String   @default("India")
+  externalId   String?  @map("external_id")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  damCapacity  DamCapacity[]
+
+  @@index([region])
+  @@index([isActive])
+  @@map("dams")
+}
+
+// Groundwater Wells
+model GroundwaterWell {
+  id         String   @id @default(uuid())
+  name       String
+  location   Json     // { lat: number, lng: number }
+  address    String?
+  region     String
+  state      String?
+  country    String   @default("India")
+  aquiferType String? @map("aquifer_type")
+  externalId String?  @map("external_id")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  groundwaterDepth GroundwaterDepth[]
+
+  @@index([region])
+  @@map("groundwater_wells")
+}
+
+// Rainfall Stations
+model RainfallStation {
+  id         String   @id @default(uuid())
+  name       String
+  location   Json     // { lat: number, lng: number }
+  address    String?
+  region     String
+  state      String?
+  country    String   @default("India")
+  elevation  Decimal? @db.Decimal(10, 2)
+  externalId String?  @map("external_id")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  rainfallData RainfallData[]
+
+  @@index([region])
+  @@map("rainfall_stations")
+}
+
+// Alert Configurations
+model AlertConfiguration {
+  id               String   @id @default(uuid())
+  userId           String   @map("user_id")
+  type             String   // river, dam, groundwater, rainfall
+  entityId         String   @map("entity_id")
+  thresholdOperator String  @map("threshold_operator")
+  thresholdValue   Decimal  @map("threshold_value") @db.Decimal(12, 2)
+  channels         String[]
+  enabled          Boolean  @default(true)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alerts Alert[]
+
+  @@index([userId])
+  @@index([type, entityId])
+  @@map("alert_configurations")
+}
+
+// Alerts
+model Alert {
+  id              String    @id @default(uuid())
+  configurationId String?   @map("configuration_id")
+  type            String
+  entityId        String   @map("entity_id")
+  entityName      String?  @map("entity_name")
+  severity        String   // info, warning, critical
+  message         String
+  triggeredAt    DateTime  @default(now()) @map("triggered_at")
+  resolvedAt      DateTime? @map("resolved_at")
+  acknowledged    Boolean   @default(false)
+  acknowledgedAt  DateTime? @map("acknowledged_at")
+  acknowledgedBy  String?  @map("acknowledged_by")
+
+  configuration AlertConfiguration? @relation(fields: [configurationId], references: [id], onDelete: SetNull)
+
+  @@index([configurationId])
+  @@index([type, entityId])
+  @@index([severity])
+  @@index([triggeredAt])
+  @@map("alerts")
+}
+
+// Notifications
+model Notification {
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  type         String    // email, sms, push
+  channel      String?
+  subject      String?
+  message      String
+  status       String    @default("pending") // pending, sent, failed, delivered
+  sentAt       DateTime? @map("sent_at")
+  deliveredAt DateTime?  @map("delivered_at")
+  errorMessage String?   @map("error_message")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@map("notifications")
+}
+
+// Time-series data models (for TimescaleDB)
+// Note: These will be created as hypertables in TimescaleDB
+// Prisma doesn't directly support TimescaleDB, so we'll manage these separately
+
+// River Levels (TimescaleDB hypertable)
+model RiverLevel {
+  stationId String   @map("station_id")
+  level     Decimal  @db.Decimal(10, 2)
+  status    String
+  timestamp DateTime
+  source    String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  station Station @relation(fields: [stationId], references: [id], onDelete: Cascade)
+
+  @@id([stationId, timestamp])
+  @@index([timestamp(sort: Desc)])
+  @@map("river_levels")
+}
+
+// Dam Capacity (TimescaleDB hypertable)
+model DamCapacity {
+  damId         String   @map("dam_id")
+  storage       Decimal  @db.Decimal(12, 2)
+  capacity      Decimal  @db.Decimal(12, 2)
+  percentage    Decimal  @db.Decimal(5, 2)
+  inflowRate    Decimal? @map("inflow_rate") @db.Decimal(10, 2)
+  outflowRate   Decimal? @map("outflow_rate") @db.Decimal(10, 2)
+  powerGeneration Decimal? @map("power_generation") @db.Decimal(10, 2)
+  status        String
+  timestamp     DateTime
+  source        String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  dam Dam @relation(fields: [damId], references: [id], onDelete: Cascade)
+
+  @@id([damId, timestamp])
+  @@index([timestamp(sort: Desc)])
+  @@map("dam_capacity")
+}
+
+// Groundwater Depth (TimescaleDB hypertable)
+model GroundwaterDepth {
+  wellId    String   @map("well_id")
+  depth     Decimal  @db.Decimal(10, 2)
+  season    String?
+  timestamp DateTime
+  source    String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  well GroundwaterWell @relation(fields: [wellId], references: [id], onDelete: Cascade)
+
+  @@id([wellId, timestamp])
+  @@index([timestamp(sort: Desc)])
+  @@map("groundwater_depth")
+}
+
+// Rainfall Data (TimescaleDB hypertable)
+model RainfallData {
+  stationId String   @map("station_id")
+  rainfall  Decimal  @db.Decimal(8, 2)
+  season    String?
+  timestamp DateTime @db.Date
+  source    String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  station RainfallStation @relation(fields: [stationId], references: [id], onDelete: Cascade)
+
+  @@id([stationId, timestamp])
+  @@index([timestamp(sort: Desc)])
+  @@map("rainfall_data")
+}
