@@ -148,9 +148,8 @@ See `development-process/09-deployment-guide.md` for detailed deployment instruc
 
 ## 📝 License
 
-[Add your license here]
+MIT License
 
 ## 👥 Contributors
 
 [Add contributors here]
-
