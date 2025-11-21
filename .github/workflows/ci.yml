@@ -1,0 +1,128 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  backend-test:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: hydrowatch
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: hydrowatch_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: ./backend
+        run: npm ci
+      
+      - name: Generate Prisma Client
+        working-directory: ./backend
+        run: npx prisma generate
+      
+      - name: Run migrations
+        working-directory: ./backend
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://hydrowatch:test_password@localhost:5432/hydrowatch_test
+      
+      - name: Run linter
+        working-directory: ./backend
+        run: npm run lint
+      
+      - name: Run tests
+        working-directory: ./backend
+        run: npm run test:cov
+        env:
+          DATABASE_URL: postgresql://hydrowatch:test_password@localhost:5432/hydrowatch_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: test_secret_key_min_32_characters_long
+          JWT_REFRESH_SECRET: test_refresh_secret_min_32_characters_long
+
+  frontend-test:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: npm ci
+      
+      - name: Run linter
+        working-directory: ./frontend
+        run: npm run lint
+      
+      - name: Run tests
+        working-directory: ./frontend
+        run: npm run test
+      
+      - name: Build
+        working-directory: ./frontend
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:3001/api/v1
+          NEXT_PUBLIC_WS_URL: ws://localhost:3001
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Run security audit (Backend)
+        working-directory: ./backend
+        run: npm audit --audit-level=moderate || true
+      
+      - name: Run security audit (Frontend)
+        working-directory: ./frontend
+        run: npm audit --audit-level=moderate || true
+
